@@ -842,6 +842,8 @@ public abstract class AbstractSwitchLayout implements ISwitchLayout,
                 } else if (item.getItemId() == R.id.package_inspect_item) {
                     mRecentsManager.startApplicationDetailsActivity(ad
                             .getPackageName());
+		} else if (item.getItemId() == R.id.recent_float_item) {
+			mRecentsManager.floatingTask(ad);
                 } else if (item.getItemId() == R.id.package_add_favorite) {
                     Intent intent = ad.getIntent();
                     String intentStr = intent.toUri(0);
@@ -893,6 +895,8 @@ public abstract class AbstractSwitchLayout implements ISwitchLayout,
                 if (item.getItemId() == R.id.package_inspect_item) {
                     mRecentsManager.startApplicationDetailsActivity(packageItem
                             .getActivityInfo().packageName);
+		} else if (item.getItemId() == R.id.recent_float_item) {
+                    mRecentsManager.startIntentFromtString(packageItem.getIntent(), true, true);
                 } else if (item.getItemId() == R.id.package_remove_favorite) {
                     Utils.removeFromFavorites(mContext,
                             packageItem.getIntent(), mFavoriteList);
@@ -925,6 +929,8 @@ public abstract class AbstractSwitchLayout implements ISwitchLayout,
                 if (item.getItemId() == R.id.package_inspect_item) {
                     mRecentsManager.startApplicationDetailsActivity(packageItem
                             .getActivityInfo().packageName);
+		} else if (item.getItemId() == R.id.recent_float_item) {
+                    mRecentsManager.startIntentFromtString(packageItem.getIntent(), true, true);
                 } else if (item.getItemId() == R.id.package_add_favorite) {
                     Log.d(TAG, "add " + packageItem.getIntent());
                     Utils.addToFavorites(mContext, packageItem.getIntent(),
