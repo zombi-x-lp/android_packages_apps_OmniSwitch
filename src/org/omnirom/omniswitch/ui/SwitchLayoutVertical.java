@@ -22,10 +22,12 @@ import java.util.List;
 import org.omnirom.omniswitch.PackageManager;
 import org.omnirom.omniswitch.R;
 import org.omnirom.omniswitch.SettingsActivity;
+import org.omnirom.omniswitch.SwitchConfiguration;
 import org.omnirom.omniswitch.SwitchManager;
 import org.omnirom.omniswitch.TaskDescription;
 
 import android.animation.Animator;
+import android.animation.AnimatorSet;
 import android.animation.Animator.AnimatorListener;
 import android.animation.ObjectAnimator;
 import android.app.ActivityManager;
@@ -131,7 +133,7 @@ public class SwitchLayoutVertical extends AbstractSwitchLayout {
                 Log.d(TAG, usedMemStr + " " + availMemStr);
                 mRamDisplay.setImageDrawable(BitmapUtils.memImage(mContext.getResources(),
                         mConfiguration.mMemDisplaySize, mConfiguration.mDensity,
-                        mConfiguration.mLayoutStyle == 0, mConfiguration.mBgStyle == 0, usedMemStr, availMemStr));
+                        mConfiguration.mLayoutStyle == 0, usedMemStr, availMemStr));
             }
         };
     }
@@ -224,6 +226,7 @@ public class SwitchLayoutVertical extends AbstractSwitchLayout {
                 });
 
         mAppDrawer = (GridView) mView.findViewById(R.id.app_drawer);
+        mAppDrawer.setVerticalScrollBarEnabled(false);
         mAppDrawer.setOnItemClickListener(new OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view,
@@ -315,9 +318,12 @@ public class SwitchLayoutVertical extends AbstractSwitchLayout {
 
         updateStyle();
 
-        if (mConfiguration.mBgStyle == 0) {
+        if (mConfiguration.mBgStyle == SwitchConfiguration.BgStyle.SOLID_LIGHT) {
             mView.setBackground(mContext.getResources().getDrawable(
                     R.drawable.overlay_bg_flat));
+        } else if (mConfiguration.mBgStyle == SwitchConfiguration.BgStyle.SOLID_DARK) {
+            mView.setBackground(mContext.getResources().getDrawable(
+                    R.drawable.overlay_bg_flat_dark));
         } else {
             mView.setBackground(mContext.getResources().getDrawable(
                     R.drawable.overlay_bg));
@@ -337,6 +343,7 @@ public class SwitchLayoutVertical extends AbstractSwitchLayout {
 
         mNoRecentApps.setLayoutParams(getRecentListParams());
         mAppDrawer.setColumnWidth(mConfiguration.mMaxWidth);
+        mAppDrawer.setNumColumns(getAppDrawerColumns());
         mAppDrawer.setLayoutParams(getAppDrawerParams());
         mAppDrawer.requestLayout();
         mAppDrawer.scrollTo(0, 0);
@@ -354,21 +361,6 @@ public class SwitchLayoutVertical extends AbstractSwitchLayout {
                 : View.GONE);
         enableOpenFavoriteButton();
         mOpenFavorite.setRotation(getExpandRotation());
-
-        if (mHasFavorites && !mShowcaseDone) {
-            mOpenFavorite.getViewTreeObserver().addOnGlobalLayoutListener(
-                    new ViewTreeObserver.OnGlobalLayoutListener() {
-                        @Override
-                        public void onGlobalLayout() {
-                            mOpenFavorite.getViewTreeObserver()
-                                    .removeOnGlobalLayoutListener(this);
-                            int[] location = new int[2];
-                            mOpenFavorite.getLocationOnScreen(location);
-                            mOpenFavoriteX = location[0];
-                            mOpenFavoriteY = location[1];
-                        }
-                    });
-        }
 
         buildButtons();
 
@@ -401,12 +393,11 @@ public class SwitchLayoutVertical extends AbstractSwitchLayout {
         return params;
     }
 
-    // TODO dont use real icon size values in code
     private int getAppDrawerColumns() {
-        if (mConfiguration.mIconSize == 40) {
+        if (mConfiguration.mIconSizeDesc == SwitchConfiguration.IconSize.SMALL) {
             return 4;
         }
-        if (mConfiguration.mIconSize == 60) {
+        if (mConfiguration.mIconSizeDesc == SwitchConfiguration.IconSize.NORMAL) {
             return 3;
         }
         return 2;
@@ -414,7 +405,7 @@ public class SwitchLayoutVertical extends AbstractSwitchLayout {
 
     private LinearLayout.LayoutParams getAppDrawerParams() {
         return new LinearLayout.LayoutParams(getAppDrawerColumns()
-                * mConfiguration.mMaxWidth,
+                * (mConfiguration.mMaxWidth + mConfiguration.mIconBorderHorizontal),
                 LinearLayout.LayoutParams.MATCH_PARENT);
     }
 
@@ -424,8 +415,10 @@ public class SwitchLayoutVertical extends AbstractSwitchLayout {
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.MATCH_PARENT,
                 WindowManager.LayoutParams.TYPE_PHONE,
-                mConfiguration.mDimBehind ? WindowManager.LayoutParams.FLAG_DIM_BEHIND
-                        : 0, PixelFormat.TRANSLUCENT);
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                | (mConfiguration.mDimBehind ? WindowManager.LayoutParams.FLAG_DIM_BEHIND
+                        : 0), PixelFormat.TRANSLUCENT);
 
         // Turn on hardware acceleration for high end gfx devices.
         if (ActivityManager.isHighEndGfx()) {
@@ -496,7 +489,7 @@ public class SwitchLayoutVertical extends AbstractSwitchLayout {
 
     private PackageTextView getRecentItemTemplate() {
         PackageTextView item = new PackageTextView(mContext);
-        if (mConfiguration.mBgStyle == 0) {
+        if (mConfiguration.mBgStyle == SwitchConfiguration.BgStyle.SOLID_LIGHT) {
             item.setTextColor(Color.BLACK);
             item.setShadowLayer(0, 0, 0, Color.BLACK);
         } else {
@@ -509,7 +502,7 @@ public class SwitchLayoutVertical extends AbstractSwitchLayout {
         item.setMaxLines(1);
         item.setCanSideHeader(true);
         item.setLayoutParams(getRecentListItemParams());
-        item.setBackgroundResource(mConfiguration.mBgStyle == 0 ? R.drawable.ripple_dark
+        item.setBackgroundResource(mConfiguration.mBgStyle == SwitchConfiguration.BgStyle.SOLID_LIGHT ? R.drawable.ripple_dark
                 : R.drawable.ripple_light);
         item.setThumbRatio(mConfiguration.mThumbRatio);
         return item;
@@ -538,23 +531,37 @@ public class SwitchLayoutVertical extends AbstractSwitchLayout {
         }
 
         if (mShowFavorites) {
-            mFavoriteListView.setVisibility(View.VISIBLE);
             mFavoriteListView.setScaleX(0f);
             mFavoriteListView.setPivotX(0f);
-            mShowFavAnim = start(interpolator(
+            mFavoriteListView.setVisibility(View.VISIBLE);
+            Animator expandAnimator = interpolator(
                     mLinearInterpolator,
-                    ObjectAnimator.ofFloat(mFavoriteListView, View.SCALE_X, 0f,
-                            1f)).setDuration(FAVORITE_DURATION));
+                    ObjectAnimator.ofFloat(mFavoriteListView, View.SCALE_X, 0f, 1f));
+            Animator rotateAnimator = interpolator(
+                    mLinearInterpolator,
+                    ObjectAnimator.ofFloat(mOpenFavorite, View.ROTATION,
+                    mConfiguration.mLocation != 0 ? ROTATE_270_DEGREE : ROTATE_90_DEGREE,
+                    mConfiguration.mLocation != 0 ? ROTATE_270_DEGREE + ROTATE_180_DEGREE : ROTATE_270_DEGREE));
+            mShowFavAnim = new AnimatorSet();
+            mShowFavAnim.playTogether(expandAnimator, rotateAnimator);
+            mShowFavAnim.setDuration(FAVORITE_DURATION);
+            mShowFavAnim.start();
         } else {
             mFavoriteListView.setScaleX(1f);
             mFavoriteListView.setPivotX(0f);
-            mShowFavAnim = start(setVisibilityWhenDone(
-                    interpolator(
-                            mLinearInterpolator,
-                            ObjectAnimator.ofFloat(mFavoriteListView,
-                                    View.SCALE_X, 1f, 0f)).setDuration(
-                            FAVORITE_DURATION), mFavoriteListView,
-                    View.GONE));
+            Animator collapseAnimator = setVisibilityWhenDone(interpolator(
+                    mLinearInterpolator,
+                    ObjectAnimator.ofFloat(mFavoriteListView, View.SCALE_X, 1f, 0f)),
+                    mFavoriteListView, View.GONE);
+            Animator rotateAnimator = interpolator(
+                    mLinearInterpolator,
+                    ObjectAnimator.ofFloat(mOpenFavorite, View.ROTATION,
+                    mConfiguration.mLocation != 0 ? ROTATE_90_DEGREE : ROTATE_270_DEGREE,
+                    mConfiguration.mLocation != 0 ? ROTATE_270_DEGREE : ROTATE_270_DEGREE + ROTATE_180_DEGREE));
+            mShowFavAnim = new AnimatorSet();
+            mShowFavAnim.playTogether(collapseAnimator, rotateAnimator);
+            mShowFavAnim.setDuration(FAVORITE_DURATION);
+            mShowFavAnim.start();
         }
 
         mShowFavAnim.addListener(new AnimatorListener() {
@@ -592,27 +599,30 @@ public class SwitchLayoutVertical extends AbstractSwitchLayout {
     }
 
     private void updateStyle() {
-        if (mConfiguration.mBgStyle == 0) {
-            mButtonListContainer.setBackground(mContext.getResources()
-                    .getDrawable(R.drawable.overlay_bg_button_flat));
+        if (mConfiguration.mBgStyle == SwitchConfiguration.BgStyle.SOLID_LIGHT) {
             mNoRecentApps.setTextColor(Color.BLACK);
             mNoRecentApps.setShadowLayer(0, 0, 0, Color.BLACK);
             mOpenFavorite.setImageDrawable(mContext.getResources().getDrawable(
                     R.drawable.ic_expand_down));
-            mButtonListContainer.setOutlineProvider(BUTTON_OUTLINE_PROVIDER);
         } else {
-            mButtonListContainer.setBackground(null);
             mNoRecentApps.setTextColor(Color.WHITE);
             mNoRecentApps.setShadowLayer(5, 0, 0, Color.BLACK);
             mOpenFavorite.setImageDrawable(BitmapUtils.shadow(
                     mContext.getResources(),
                     mContext.getResources().getDrawable(
                             R.drawable.ic_expand_down)));
+        }
+        if (mConfiguration.mBgStyle != SwitchConfiguration.BgStyle.TRANSPARENT) {
+            mButtonListContainer.setBackground(mContext.getResources()
+                    .getDrawable(R.drawable.overlay_bg_button_flat));
+            mButtonListContainer.setOutlineProvider(BUTTON_OUTLINE_PROVIDER);
+        } else {
+            mButtonListContainer.setBackground(null);
             mButtonListContainer.setOutlineProvider(null);
         }
     }
 
-    private int getExpandRotation() {
+    private float getExpandRotation() {
         if (mConfiguration.mLocation != 0) {
             return mShowFavorites ? ROTATE_90_DEGREE : ROTATE_270_DEGREE;
         }
@@ -621,6 +631,10 @@ public class SwitchLayoutVertical extends AbstractSwitchLayout {
 
     @Override
     protected int getCurrentOverlayWidth() {
+        if (mShowAppDrawer) {
+            return getAppDrawerParams().width
+                    + (isButtonVisible() ? mConfiguration.mActionSizePx : 0);
+        }
         return getCurrentThumbWidth()
                 + (mShowFavorites ? mConfiguration.mMaxWidth : 0)
                 + (isButtonVisible() ? mConfiguration.mActionSizePx : 0);
@@ -651,7 +665,7 @@ public class SwitchLayoutVertical extends AbstractSwitchLayout {
         mRamDisplay.setLayoutParams(params);
         mRamDisplay.setImageDrawable(BitmapUtils.memImage(mContext.getResources(),
                 mConfiguration.mMemDisplaySize, mConfiguration.mDensity,
-                mConfiguration.mLayoutStyle == 0, mConfiguration.mBgStyle == 0, "", ""));
+                mConfiguration.mLayoutStyle == 0, "", ""));
         mActionList.add(mRamDisplay);
     }
 
